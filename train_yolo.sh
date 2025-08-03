@@ -4,7 +4,7 @@
 EPOCHS=${1:-200}
 BATCH=${2:-16}
 IMGSZ=${3:-640}
-MODEL=${4:-yolov8n.pt}
+MODEL=${4:-XXX.pt}
 DATA_CFG=${5:-data.yaml}
 PROJECT_DIR=${6:-models}
 EXP_NAME=${7:-exp_ex_corr}
