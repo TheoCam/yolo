@@ -18,6 +18,7 @@ def split_dataset_three_way(
     - train_ratio + val_ratio <= 1.0
     - test_ratio is implied as (1 - train_ratio - val_ratio)
     """
+    print(f"[+] Splitting dataset: images={images_dir}, labels={labels_dir}, output={output_dir}")
     # 1) List all images
     IM_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff"}
     all_images = [

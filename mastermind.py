@@ -18,28 +18,61 @@ function main() {
   }
   const workspaceDir = path.resolve(workspaceArg);
   fs.mkdirSync(workspaceDir, { recursive: true });
+  console.log(`[+] Workspace directory set to ${workspaceDir}`);
 
   // Ensure AWS region is set
   if (!process.env.AWS_DEFAULT_REGION) {
     process.env.AWS_DEFAULT_REGION = 'eu-north-1';
   }
 
-  const imagesDir = path.join(workspaceDir, 'images');
-  const labelsDir = path.join(workspaceDir, 'labels');
-  const metadataDir = path.join(workspaceDir, 'metadata');
-  const datasetDir = path.join(workspaceDir, 'dataset');
+  const buckets = ['fiches-udp', 'fiches-sorbonne'];
 
   const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
-  run('python', [
-    fetchScript,
-    'fiches-udp',
-    'fiches-sorbonne',
-    '--images-dir', imagesDir,
-    '--labels-dir', labelsDir,
-    '--metadata-dir', metadataDir,
-  ]);
+  for (const bucket of buckets) {
+    const bucketDir = path.join(workspaceDir, bucket);
+    const imgDir = path.join(bucketDir, 'images');
+    const lblDir = path.join(bucketDir, 'labels');
+    const metaDir = path.join(bucketDir, 'metadata');
+    console.log(`[+] Fetching dataset from S3 bucket ${bucket}...`);
+    run('python', [
+      fetchScript,
+      bucket,
+      '--images-dir', imgDir,
+      '--labels-dir', lblDir,
+      '--metadata-dir', metaDir,
+    ]);
+  }
 
+  // Merge all bucket directories into a single set for splitting
+  const imagesDir = path.join(workspaceDir, 'images');
+  const labelsDir = path.join(workspaceDir, 'labels');
+  fs.mkdirSync(imagesDir, { recursive: true });
+  fs.mkdirSync(labelsDir, { recursive: true });
+  for (const bucket of buckets) {
+    const srcImgDir = path.join(workspaceDir, bucket, 'images');
+    const srcLblDir = path.join(workspaceDir, bucket, 'labels');
+    console.log(`[+] Merging ${bucket} images and labels...`);
+    const imgFiles = fs.readdirSync(srcImgDir, { withFileTypes: true });
+    for (const file of imgFiles) {
+      if (file.isFile()) {
+        const src = path.join(srcImgDir, file.name);
+        const dest = path.join(imagesDir, `${bucket}_${file.name}`);
+        fs.copyFileSync(src, dest);
+      }
+    }
+    const lblFiles = fs.readdirSync(srcLblDir, { withFileTypes: true });
+    for (const file of lblFiles) {
+      if (file.isFile()) {
+        const src = path.join(srcLblDir, file.name);
+        const dest = path.join(labelsDir, `${bucket}_${file.name}`);
+        fs.copyFileSync(src, dest);
+      }
+    }
+  }
+
+  const datasetDir = path.join(workspaceDir, 'dataset');
   const splitScript = path.join(__dirname, 'split_dataset.py');
+  console.log('[+] Splitting dataset into train/val/test...');
   run('python', [
     splitScript,
     '-i', imagesDir,
@@ -50,6 +83,7 @@ function main() {
   ]);
 
   const dataYamlPath = path.join(workspaceDir, 'data.yaml');
+  console.log('[+] Writing data.yaml configuration...');
   const yamlContent = [
     `train: ${path.join(datasetDir, 'images/train')}`,
     `val: ${path.join(datasetDir, 'images/val')}`,
@@ -66,11 +100,13 @@ function main() {
 
   const trainScript = path.join(__dirname, 'train_yolo.py');
   const modelPath = path.join(__dirname, 'yolo11n.pt');
+  console.log('[+] Starting YOLO training...');
   run('python', [
     trainScript,
     '--data', dataYamlPath,
     '--model', modelPath,
   ]);
+  console.log('[+] Training completed.');
 }
 
 main();
