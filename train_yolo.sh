@@ -35,7 +35,7 @@ if [ -n "$S3_BUCKETS" ]; then
         -v 0.2
 fi
 
-ultralytics train detect \
+CMD=(ultralytics train detect \
     model=$MODEL \
     data=$DATA_CFG \
     epochs=$EPOCHS \
