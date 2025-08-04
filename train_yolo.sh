@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Train YOLOv8 model for document element detection.
-# Usage: ./train_yolo.sh [epochs] [batch_size] [imgsz] [model] [data_cfg] [project_dir] [exp_name]
+# Usage: ./train_yolo.sh [epochs] [batch_size] [imgsz] [model] [data_cfg] [project_dir] [exp_name] [device]
 
 EPOCHS=${1:-200}
 BATCH=${2:-16}
@@ -10,6 +10,7 @@ DATA_CFG=${5:-data.yaml}
 PROJECT_DIR=${6:-models}
 EXP_NAME=${7:-exp_ex_corr}
 PATIENCE=${8:-15}
+DEVICE=${9:-0}
 
 # If S3 buckets are provided, fetch images and labels then create dataset split
 if [ -n "$S3_BUCKETS" ]; then
@@ -34,4 +35,5 @@ ultralytics train detect \
     batch=$BATCH \
     patience=$PATIENCE \
     project=$PROJECT_DIR \
-    name=$EXP_NAME
+    name=$EXP_NAME \
+    device=$DEVICE
