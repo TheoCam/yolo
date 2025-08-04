@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Orchestrate YOLOv8 training using Node.js
 // Usage: node mastermind.py <workspace_dir> [--skip-0]
+//        --skip-0 : skip S3 download and use existing data
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -13,10 +14,10 @@ function run(cmd, args) {
 function main() {
   const args = process.argv.slice(2);
   let workspaceArg;
-  let skipExisting = false;
+  let skipS3 = false;
   for (const arg of args) {
     if (arg === '--skip-0') {
-      skipExisting = true;
+      skipS3 = true;
     } else if (!workspaceArg) {
       workspaceArg = arg;
     } else {
@@ -39,24 +40,24 @@ function main() {
 
   const buckets = ['fiches-udp', 'fiches-sorbonne'];
 
-  const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
-  for (const bucket of buckets) {
-    const bucketDir = path.join(workspaceDir, bucket);
-    const imgDir = path.join(bucketDir, 'images');
-    const lblDir = path.join(bucketDir, 'labels');
-    const metaDir = path.join(bucketDir, 'metadata');
-    console.log(`[+] Fetching dataset from S3 bucket ${bucket}...`);
-    const fetchArgs = [
-      fetchScript,
-      bucket,
-      '--images-dir', imgDir,
-      '--labels-dir', lblDir,
-      '--metadata-dir', metaDir,
-    ];
-    if (skipExisting) {
-      fetchArgs.push('--skip-0');
+  if (!skipS3) {
+    const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
+    for (const bucket of buckets) {
+      const bucketDir = path.join(workspaceDir, bucket);
+      const imgDir = path.join(bucketDir, 'images');
+      const lblDir = path.join(bucketDir, 'labels');
+      const metaDir = path.join(bucketDir, 'metadata');
+      console.log(`[+] Fetching dataset from S3 bucket ${bucket}...`);
+      run('python', [
+        fetchScript,
+        bucket,
+        '--images-dir', imgDir,
+        '--labels-dir', lblDir,
+        '--metadata-dir', metaDir,
+      ]);
     }
-    run('python', fetchArgs);
+  } else {
+    console.log('[+] Skipping S3 dataset download.');
   }
 
   // Merge all bucket directories into a single set for splitting
