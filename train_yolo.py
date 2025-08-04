@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--patience", type=int, default=15, help="Early stopping patience")
     parser.add_argument("--project", default="models", help="Ultralytics project directory")
     parser.add_argument("--name", default="exp_ex_corr", help="Training run name")
+    parser.add_argument("--device", default="0", help="Device to train on, i.e. '0' or 'cpu'")
     args = parser.parse_args()
     print(f"[+] Loading model {args.model}")
     model = YOLO(args.model)
@@ -29,6 +30,7 @@ def main() -> None:
         patience=args.patience,
         project=args.project,
         name=args.name,
+        device=args.device,
     )
     print("[+] Training finished")
 
