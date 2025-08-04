@@ -14,9 +14,9 @@ PATIENCE=${8:-15}
 # If S3 buckets are provided, fetch images and labels then create dataset split
 if [ -n "$S3_BUCKETS" ]; then
     if [ -n "$S3_PREFIX" ]; then
-        python fetch_s3_dataset.py $S3_BUCKETS --prefix "$S3_PREFIX"
+        python fetch_s3_dataset.py $S3_BUCKETS --prefix "$S3_PREFIX" --metadata-dir metadata
     else
-        python fetch_s3_dataset.py $S3_BUCKETS
+        python fetch_s3_dataset.py $S3_BUCKETS --metadata-dir metadata
     fi
     python split_dataset.py \
         -i images \

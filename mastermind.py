@@ -1,102 +1,94 @@
 #!/usr/bin/env python3
-"""Orchestrate YOLOv8 training using images stored across multiple S3 buckets.
+"""Orchestrate YOLOv8 training workflow.
 
-Running ``python mastermind.py`` will:
-  1. Download all PNG images and their YOLO labels encoded in S3 object
-     metadata from a predefined list of buckets.
-  2. Split the gathered data into train/val/test subsets.
-  3. Launch a YOLOv8 training run on the prepared dataset.
-
-The script assumes AWS credentials with ``s3:GetObject`` and
-``s3:ListBucket`` permissions are configured in the environment.
+Usage: python mastermind.py <workspace_dir>
 """
 
 from __future__ import annotations
 
 import os
+import sys
 import subprocess
-from ultralytics import YOLO
+from pathlib import Path
 
-# Buckets storing the training images.
-BUCKETS = [
-    "acc-amiens",
-    "acc-bobigny",
-    "acc-bordeaux",
-    "acc-dijon",
-    "acc-lille",
-    "acc-marseille",
-    "acc-montpellier",
-    "acc-saclay",
-    "acc-sorbonne",
-    "acc-udp",
-    "acc-upec",
-    "acc-uvsq",
-    "actu-bobigny",
-    "actu-sorbonne",
-    "actu-upc",
-    "fiches-amiens",
-    "fiches-bobigny",
-    "fiches-bordeaux",
-    "fiches-dijon",
-    "fiches-lille",
-    "fiches-marseille",
-    "fiches-montpellier",
-    "fiches-saclay",
-    "fiches-sorbonne",
-    "fiches-udp",
-    "fiches-upec",
-    "fiches-uvsq",
-]
-
-# Ensure the AWS client knows which region to hit if none is configured.
-os.environ.setdefault("AWS_DEFAULT_REGION", "eu-north-1")
-
-
-def fetch_from_s3() -> None:
-    """Download images and labels for all buckets using ``fetch_s3_dataset.py``."""
-    cmd = ["python", "fetch_s3_dataset.py", *BUCKETS]
+def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
+def main() -> None:
+    if len(sys.argv) != 2:
+        print("Usage: python mastermind.py <workspace_dir>", file=sys.stderr)
+        sys.exit(1)
 
-def split_dataset() -> None:
-    """Split downloaded files into train/val/test directories."""
-    cmd = [
-        "python",
-        "split_dataset.py",
+    workspace_dir = Path(sys.argv[1]).resolve()
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure AWS region is set for boto3
+    os.environ.setdefault("AWS_DEFAULT_REGION", "eu-north-1")
+
+    images_dir = workspace_dir / "images"
+    labels_dir = workspace_dir / "labels"
+    metadata_dir = workspace_dir / "metadata"
+    dataset_dir = workspace_dir / "dataset"
+
+    script_dir = Path(__file__).resolve().parent
+
+    fetch_script = script_dir / "fetch_s3_dataset.py"
+    run([
+        sys.executable,
+        str(fetch_script),
+        "fiches-udp",
+        "fiches-sorbonne",
+        "--images-dir",
+        str(images_dir),
+        "--labels-dir",
+        str(labels_dir),
+        "--metadata-dir",
+        str(metadata_dir),
+    ])
+
+    split_script = script_dir / "split_dataset.py"
+    run([
+        sys.executable,
+        str(split_script),
         "-i",
-        "images",
+        str(images_dir),
         "-l",
-        "labels",
+        str(labels_dir),
         "-o",
-        "dataset",
+        str(dataset_dir),
         "-r",
         "0.7",
         "-v",
         "0.2",
-    ]
-    subprocess.run(cmd, check=True)
+    ])
 
-
-def train_yolo() -> None:
-    """Train a YOLOv8 model on the prepared dataset."""
-    model = YOLO("yolo11n.pt")
-    model.train(
-        data="data.yaml",
-        epochs=200,
-        imgsz=640,
-        batch=16,
-        patience=15,
-        project="models",
-        name="exp_ex_corr",
-        tensorboard=True,
+    data_yaml_path = workspace_dir / "data.yaml"
+    yaml_content = "\n".join(
+        [
+            f"train: {dataset_dir / 'images' / 'train'}",
+            f"val: {dataset_dir / 'images' / 'val'}",
+            f"test: {dataset_dir / 'images' / 'test'}",
+            "",
+            "# Number of classes",
+            "nc: 5",
+            "",
+            "# Class names",
+            "names: ['schematic', 'table', 'qcm', 'preamble', 'question_year']",
+            "",
+        ]
     )
+    data_yaml_path.write_text(yaml_content)
 
-
-def main() -> None:
-    fetch_from_s3()
-    split_dataset()
-    train_yolo()
-
+    train_script = script_dir / "train_yolo.py"
+    model_path = script_dir / "yolo11n.pt"
+    run([
+        sys.executable,
+        str(train_script),
+        "--data",
+        str(data_yaml_path),
+        "--model",
+        str(model_path),
+    ])
 
 if __name__ == "__main__":
     main()
