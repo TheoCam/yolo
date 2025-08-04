@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Orchestrate YOLOv8 training using Node.js
-// Usage: node mastermind.py <workspace_dir>
+// Usage: node mastermind.py <workspace_dir> [--skip-0]
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -11,9 +11,21 @@ function run(cmd, args) {
 }
 
 function main() {
-  const workspaceArg = process.argv[2];
+  const args = process.argv.slice(2);
+  let workspaceArg;
+  let skipExisting = false;
+  for (const arg of args) {
+    if (arg === '--skip-0') {
+      skipExisting = true;
+    } else if (!workspaceArg) {
+      workspaceArg = arg;
+    } else {
+      console.error('Usage: node mastermind.py <workspace_dir> [--skip-0]');
+      process.exit(1);
+    }
+  }
   if (!workspaceArg) {
-    console.error('Usage: node mastermind.py <workspace_dir>');
+    console.error('Usage: node mastermind.py <workspace_dir> [--skip-0]');
     process.exit(1);
   }
   const workspaceDir = path.resolve(workspaceArg);
@@ -34,13 +46,17 @@ function main() {
     const lblDir = path.join(bucketDir, 'labels');
     const metaDir = path.join(bucketDir, 'metadata');
     console.log(`[+] Fetching dataset from S3 bucket ${bucket}...`);
-    run('python', [
+    const fetchArgs = [
       fetchScript,
       bucket,
       '--images-dir', imgDir,
       '--labels-dir', lblDir,
       '--metadata-dir', metaDir,
-    ]);
+    ];
+    if (skipExisting) {
+      fetchArgs.push('--skip-0');
+    }
+    run('python', fetchArgs);
   }
 
   // Merge all bucket directories into a single set for splitting
