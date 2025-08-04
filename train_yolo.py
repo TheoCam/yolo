@@ -29,7 +29,6 @@ def main() -> None:
         patience=args.patience,
         project=args.project,
         name=args.name,
-        tensorboard=True,
     )
     print("[+] Training finished")
 
