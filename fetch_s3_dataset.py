@@ -43,8 +43,26 @@ def _write_metadata(metadata: dict, path: str) -> None:
 
 
 def _process_object(
-    s3, bucket: str, key: str, img_dir: str, lbl_dir: str, meta_dir: str
+    s3,
+    bucket: str,
+    key: str,
+    img_dir: str,
+    lbl_dir: str,
+    meta_dir: str,
+    skip_existing: bool = False,
 ) -> None:
+    img_name = os.path.basename(key)
+    img_path = os.path.join(img_dir, img_name)
+    lbl_name = os.path.splitext(img_name)[0] + ".txt"
+    lbl_path = os.path.join(lbl_dir, lbl_name)
+    meta_path = os.path.join(meta_dir, os.path.splitext(img_name)[0] + ".json")
+
+    if skip_existing and all(
+        os.path.exists(p) for p in (img_path, lbl_path, meta_path)
+    ):
+        print(f"[+] Skipping {bucket}/{key} (already exists)")
+        return
+
     head = s3.head_object(Bucket=bucket, Key=key)
     metadata = head.get("Metadata", {})
     if metadata.get("human_verification", "").lower() != "true":
@@ -53,8 +71,6 @@ def _process_object(
     obj = s3.get_object(Bucket=bucket, Key=key)
     body = obj["Body"].read()
     os.makedirs(img_dir, exist_ok=True)
-    img_name = os.path.basename(key)
-    img_path = os.path.join(img_dir, img_name)
     with open(img_path, "wb") as f:
         f.write(body)
 
@@ -74,10 +90,9 @@ def _process_object(
                     parts = parts[1:]
                 if len(parts) == 4:
                     label_lines.append(f"{cls_id} {' '.join(parts)}")
-    lbl_name = os.path.splitext(img_name)[0] + ".txt"
-    lbl_path = os.path.join(lbl_dir, lbl_name)
+    os.makedirs(lbl_dir, exist_ok=True)
     _write_label(label_lines, lbl_path)
-    meta_path = os.path.join(meta_dir, os.path.splitext(img_name)[0] + ".json")
+    os.makedirs(meta_dir, exist_ok=True)
     _write_metadata(metadata, meta_path)
     print(f"[+] Downloaded {bucket}/{key} -> {img_name}")
 
@@ -93,6 +108,12 @@ def main() -> None:
         "--labels-dir", default="labels", help="Directory for generated labels")
     parser.add_argument(
         "--metadata-dir", default="metadata", help="Directory for saved metadata")
+    parser.add_argument(
+        "--skip-existing",
+        "--skip-0",
+        action="store_true",
+        help="Skip objects already downloaded",
+    )
     args = parser.parse_args()
 
     s3 = boto3.client("s3")
@@ -111,6 +132,7 @@ def main() -> None:
                         args.images_dir,
                         args.labels_dir,
                         args.metadata_dir,
+                        skip_existing=args.skip_existing,
                     )
                     count += 1
         print(f"[+] Processed {count} objects from {bucket}")
