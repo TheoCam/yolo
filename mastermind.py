@@ -1,102 +1,76 @@
-#!/usr/bin/env python3
-"""Orchestrate YOLOv8 training using images stored across multiple S3 buckets.
+#!/usr/bin/env node
+// Orchestrate YOLOv8 training using Node.js
+// Usage: node mastermind.py <workspace_dir>
 
-Running ``python mastermind.py`` will:
-  1. Download all PNG images and their YOLO labels encoded in S3 object
-     metadata from a predefined list of buckets.
-  2. Split the gathered data into train/val/test subsets.
-  3. Launch a YOLOv8 training run on the prepared dataset.
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-The script assumes AWS credentials with ``s3:GetObject`` and
-``s3:ListBucket`` permissions are configured in the environment.
-"""
+function run(cmd, args) {
+  execFileSync(cmd, args, { stdio: 'inherit' });
+}
 
-from __future__ import annotations
+function main() {
+  const workspaceArg = process.argv[2];
+  if (!workspaceArg) {
+    console.error('Usage: node mastermind.py <workspace_dir>');
+    process.exit(1);
+  }
+  const workspaceDir = path.resolve(workspaceArg);
+  fs.mkdirSync(workspaceDir, { recursive: true });
 
-import os
-import subprocess
-from ultralytics import YOLO
+  // Ensure AWS region is set
+  if (!process.env.AWS_DEFAULT_REGION) {
+    process.env.AWS_DEFAULT_REGION = 'eu-north-1';
+  }
 
-# Buckets storing the training images.
-BUCKETS = [
-    "acc-amiens",
-    "acc-bobigny",
-    "acc-bordeaux",
-    "acc-dijon",
-    "acc-lille",
-    "acc-marseille",
-    "acc-montpellier",
-    "acc-saclay",
-    "acc-sorbonne",
-    "acc-udp",
-    "acc-upec",
-    "acc-uvsq",
-    "actu-bobigny",
-    "actu-sorbonne",
-    "actu-upc",
-    "fiches-amiens",
-    "fiches-bobigny",
-    "fiches-bordeaux",
-    "fiches-dijon",
-    "fiches-lille",
-    "fiches-marseille",
-    "fiches-montpellier",
-    "fiches-saclay",
-    "fiches-sorbonne",
-    "fiches-udp",
-    "fiches-upec",
-    "fiches-uvsq",
-]
+  const imagesDir = path.join(workspaceDir, 'images');
+  const labelsDir = path.join(workspaceDir, 'labels');
+  const metadataDir = path.join(workspaceDir, 'metadata');
+  const datasetDir = path.join(workspaceDir, 'dataset');
 
-# Ensure the AWS client knows which region to hit if none is configured.
-os.environ.setdefault("AWS_DEFAULT_REGION", "eu-north-1")
+  const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
+  run('python', [
+    fetchScript,
+    'fiches-udp',
+    'fiches-sorbonne',
+    '--images-dir', imagesDir,
+    '--labels-dir', labelsDir,
+    '--metadata-dir', metadataDir,
+  ]);
 
+  const splitScript = path.join(__dirname, 'split_dataset.py');
+  run('python', [
+    splitScript,
+    '-i', imagesDir,
+    '-l', labelsDir,
+    '-o', datasetDir,
+    '-r', '0.7',
+    '-v', '0.2',
+  ]);
 
-def fetch_from_s3() -> None:
-    """Download images and labels for all buckets using ``fetch_s3_dataset.py``."""
-    cmd = ["python", "fetch_s3_dataset.py", *BUCKETS]
-    subprocess.run(cmd, check=True)
+  const dataYamlPath = path.join(workspaceDir, 'data.yaml');
+  const yamlContent = [
+    `train: ${path.join(datasetDir, 'images/train')}`,
+    `val: ${path.join(datasetDir, 'images/val')}`,
+    `test: ${path.join(datasetDir, 'images/test')}`,
+    '',
+    '# Number of classes',
+    'nc: 5',
+    '',
+    "# Class names",
+    "names: ['schematic', 'table', 'qcm', 'preamble', 'question_year']",
+    '',
+  ].join('\n');
+  fs.writeFileSync(dataYamlPath, yamlContent);
 
+  const trainScript = path.join(__dirname, 'train_yolo.py');
+  const modelPath = path.join(__dirname, 'yolo11n.pt');
+  run('python', [
+    trainScript,
+    '--data', dataYamlPath,
+    '--model', modelPath,
+  ]);
+}
 
-def split_dataset() -> None:
-    """Split downloaded files into train/val/test directories."""
-    cmd = [
-        "python",
-        "split_dataset.py",
-        "-i",
-        "images",
-        "-l",
-        "labels",
-        "-o",
-        "dataset",
-        "-r",
-        "0.7",
-        "-v",
-        "0.2",
-    ]
-    subprocess.run(cmd, check=True)
-
-
-def train_yolo() -> None:
-    """Train a YOLOv8 model on the prepared dataset."""
-    model = YOLO("yolo11n.pt")
-    model.train(
-        data="data.yaml",
-        epochs=200,
-        imgsz=640,
-        batch=16,
-        patience=15,
-        project="models",
-        name="exp_ex_corr",
-        tensorboard=True,
-    )
-
-
-def main() -> None:
-    fetch_from_s3()
-    split_dataset()
-    train_yolo()
-
-
-if __name__ == "__main__":
-    main()
+main();
