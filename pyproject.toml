@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yolo-pipeline"
+version = "0.1.0"
+description = "Utilities for training a YOLOv8 model and handling datasets"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "ultralytics>=8.0",
+    "torch>=1.8",
+    "boto3>=1.26"
+]
+
+[project.scripts]
+fetch-s3-dataset = "fetch_s3_dataset:main"
+split-dataset = "split_dataset:main"
+train-yolo = "train_yolo:main"
+
+[tool.setuptools]
+py-modules = ["fetch_s3_dataset", "split_dataset", "train_yolo"]

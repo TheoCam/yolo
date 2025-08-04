@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Download human-verified images and annotations from S3 metadata.
+
+Each PNG object stored in the provided S3 buckets is expected to carry
+YOLO-style bounding boxes inside custom metadata headers named
+``x-amz-meta-<class>`` where ``<class>`` is one of the supported class
+names. The header value should be a base64 encoded string containing one
+or more lines in the form ``<class_id> x_center y_center width height``
+(normalized coordinates) or just ``x_center y_center width height``.
+
+Only objects with ``x-amz-meta-human_verification=true`` are kept. The script
+downloads the PNG file to an ``images/`` directory, writes its corresponding
+label file to ``labels/`` and stores the full object metadata as JSON files.
+
+Example usage:
+    python fetch_s3_dataset.py my-bucket-1 my-bucket-2 --prefix data/
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+from typing import Iterable
+
+import boto3
+
+CLASSES = ["schematic", "table", "qcm", "preamble", "question_year"]
+CLASS_TO_ID = {name: i for i, name in enumerate(CLASSES)}
+
+
+def _write_label(lines: Iterable[str], path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def _write_metadata(metadata: dict, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+
+def _process_object(
+    s3,
+    bucket: str,
+    key: str,
+    img_dir: str,
+    lbl_dir: str,
+    meta_dir: str,
+    skip_existing: bool = False,
+) -> None:
+    img_name = os.path.basename(key)
+    img_path = os.path.join(img_dir, img_name)
+    lbl_name = os.path.splitext(img_name)[0] + ".txt"
+    lbl_path = os.path.join(lbl_dir, lbl_name)
+    meta_path = os.path.join(meta_dir, os.path.splitext(img_name)[0] + ".json")
+
+    if skip_existing and all(
+        os.path.exists(p) for p in (img_path, lbl_path, meta_path)
+    ):
+        print(f"[+] Skipping {bucket}/{key} (already exists)")
+        return
+
+    head = s3.head_object(Bucket=bucket, Key=key)
+    metadata = head.get("Metadata", {})
+    if metadata.get("human_verification", "").lower() != "true":
+        return
+
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    body = obj["Body"].read()
+    os.makedirs(img_dir, exist_ok=True)
+    with open(img_path, "wb") as f:
+        f.write(body)
+
+    label_lines = []
+    for cls_name, cls_id in CLASS_TO_ID.items():
+        if cls_name in metadata:
+            try:
+                decoded = base64.b64decode(metadata[cls_name]).decode().strip().splitlines()
+            except Exception:
+                continue
+            for line in decoded:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                # Ignore provided class id if present; use cls_id instead
+                if len(parts) == 5 and parts[0].isdigit():
+                    parts = parts[1:]
+                if len(parts) == 4:
+                    label_lines.append(f"{cls_id} {' '.join(parts)}")
+    os.makedirs(lbl_dir, exist_ok=True)
+    _write_label(label_lines, lbl_path)
+    os.makedirs(meta_dir, exist_ok=True)
+    _write_metadata(metadata, meta_path)
+    print(f"[+] Downloaded {bucket}/{key} -> {img_name}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("buckets", nargs="+", help="S3 buckets to scan")
+    parser.add_argument(
+        "--prefix", default="", help="Optional prefix inside each bucket")
+    parser.add_argument(
+        "--images-dir", default="images", help="Directory for downloaded images")
+    parser.add_argument(
+        "--labels-dir", default="labels", help="Directory for generated labels")
+    parser.add_argument(
+        "--metadata-dir", default="metadata", help="Directory for saved metadata")
+    parser.add_argument(
+        "--skip-existing",
+        "--skip-0",
+        action="store_true",
+        help="Skip objects already downloaded",
+    )
+    args = parser.parse_args()
+
+    s3 = boto3.client("s3")
+    for bucket in args.buckets:
+        print(f"[+] Scanning bucket {bucket}...")
+        count = 0
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=args.prefix):
+            for item in page.get("Contents", []):
+                key = item["Key"]
+                if key.lower().endswith(".png"):
+                    _process_object(
+                        s3,
+                        bucket,
+                        key,
+                        args.images_dir,
+                        args.labels_dir,
+                        args.metadata_dir,
+                        skip_existing=args.skip_existing,
+                    )
+                    count += 1
+        print(f"[+] Processed {count} objects from {bucket}")
+
+
+if __name__ == "__main__":
+    main()
