@@ -34,5 +34,4 @@ ultralytics train detect \
     batch=$BATCH \
     patience=$PATIENCE \
     project=$PROJECT_DIR \
-    name=$EXP_NAME \
-    tensorboard=True
+    name=$EXP_NAME
