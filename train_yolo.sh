@@ -10,7 +10,7 @@ DATA_CFG=${5:-data.yaml}
 PROJECT_DIR=${6:-models}
 EXP_NAME=${7:-exp_ex_corr}
 PATIENCE=${8:-15}
-DEVICE=${9:-0}
+DEVICE=${9:-}
 
 # If S3 buckets are provided, fetch images and labels then create dataset split
 if [ -n "$S3_BUCKETS" ]; then
@@ -27,7 +27,7 @@ if [ -n "$S3_BUCKETS" ]; then
         -v 0.2
 fi
 
-ultralytics train detect \
+CMD=(ultralytics train detect \
     model=$MODEL \
     data=$DATA_CFG \
     epochs=$EPOCHS \
@@ -35,5 +35,10 @@ ultralytics train detect \
     batch=$BATCH \
     patience=$PATIENCE \
     project=$PROJECT_DIR \
-    name=$EXP_NAME \
-    device=$DEVICE
+    name=$EXP_NAME)
+
+if [ -n "$DEVICE" ]; then
+    CMD+=(device=$DEVICE)
+fi
+
+"${CMD[@]}"
