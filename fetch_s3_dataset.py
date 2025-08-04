@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download images and annotations from S3 metadata.
+"""Download human-verified images and annotations from S3 metadata.
 
 Each PNG object stored in the provided S3 buckets is expected to carry
 YOLO-style bounding boxes inside custom metadata headers named
@@ -8,8 +8,9 @@ names. The header value should be a base64 encoded string containing one
 or more lines in the form ``<class_id> x_center y_center width height``
 (normalized coordinates) or just ``x_center y_center width height``.
 
-The script downloads the PNG file to an ``images/`` directory and writes
-its corresponding label file to ``labels/``.
+Only objects with ``x-amz-meta-human_verification=true`` are kept. The script
+downloads the PNG file to an ``images/`` directory, writes its corresponding
+label file to ``labels/`` and stores the full object metadata as JSON files.
 
 Example usage:
     python fetch_s3_dataset.py my-bucket-1 my-bucket-2 --prefix data/
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 from typing import Iterable
 
@@ -34,7 +36,20 @@ def _write_label(lines: Iterable[str], path: str) -> None:
         f.write("\n".join(lines))
 
 
-def _process_object(s3, bucket: str, key: str, img_dir: str, lbl_dir: str) -> None:
+def _write_metadata(metadata: dict, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+
+def _process_object(
+    s3, bucket: str, key: str, img_dir: str, lbl_dir: str, meta_dir: str
+) -> None:
+    head = s3.head_object(Bucket=bucket, Key=key)
+    metadata = head.get("Metadata", {})
+    if metadata.get("human_verification", "").lower() != "true":
+        return
+
     obj = s3.get_object(Bucket=bucket, Key=key)
     body = obj["Body"].read()
     os.makedirs(img_dir, exist_ok=True)
@@ -44,7 +59,6 @@ def _process_object(s3, bucket: str, key: str, img_dir: str, lbl_dir: str) -> No
         f.write(body)
 
     label_lines = []
-    metadata = obj.get("Metadata", {})
     for cls_name, cls_id in CLASS_TO_ID.items():
         if cls_name in metadata:
             try:
@@ -63,6 +77,8 @@ def _process_object(s3, bucket: str, key: str, img_dir: str, lbl_dir: str) -> No
     lbl_name = os.path.splitext(img_name)[0] + ".txt"
     lbl_path = os.path.join(lbl_dir, lbl_name)
     _write_label(label_lines, lbl_path)
+    meta_path = os.path.join(meta_dir, os.path.splitext(img_name)[0] + ".json")
+    _write_metadata(metadata, meta_path)
 
 
 def main() -> None:
@@ -74,6 +90,8 @@ def main() -> None:
         "--images-dir", default="images", help="Directory for downloaded images")
     parser.add_argument(
         "--labels-dir", default="labels", help="Directory for generated labels")
+    parser.add_argument(
+        "--metadata-dir", default="metadata", help="Directory for saved metadata")
     args = parser.parse_args()
 
     s3 = boto3.client("s3")
@@ -83,7 +101,14 @@ def main() -> None:
             for item in page.get("Contents", []):
                 key = item["Key"]
                 if key.lower().endswith(".png"):
-                    _process_object(s3, bucket, key, args.images_dir, args.labels_dir)
+                    _process_object(
+                        s3,
+                        bucket,
+                        key,
+                        args.images_dir,
+                        args.labels_dir,
+                        args.metadata_dir,
+                    )
 
 
 if __name__ == "__main__":
