@@ -12,6 +12,14 @@ EXP_NAME=${7:-exp_ex_corr}
 PATIENCE=${8:-15}
 DEVICE=${9:-}
 
+if [ -z "$DEVICE" ]; then
+    DEVICE=$(python - <<'PY'
+import torch
+print('0' if torch.cuda.is_available() else 'cpu')
+PY
+)
+fi
+
 # If S3 buckets are provided, fetch images and labels then create dataset split
 if [ -n "$S3_BUCKETS" ]; then
     if [ -n "$S3_PREFIX" ]; then
@@ -35,10 +43,5 @@ CMD=(ultralytics train detect \
     batch=$BATCH \
     patience=$PATIENCE \
     project=$PROJECT_DIR \
-    name=$EXP_NAME)
-
-if [ -n "$DEVICE" ]; then
-    CMD+=(device=$DEVICE)
-fi
-
-"${CMD[@]}"
+    name=$EXP_NAME \
+    device=$DEVICE

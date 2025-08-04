@@ -24,9 +24,14 @@ def main() -> None:
         help="Device to train on, e.g. '0' or 'cpu'. Auto-detect by default",
     )
     args = parser.parse_args()
-    if args.device not in (None, "cpu") and not torch.cuda.is_available():
+
+    if args.device is None:
+        args.device = "0" if torch.cuda.is_available() else "cpu"
+    elif args.device != "cpu" and not torch.cuda.is_available():
         print("[!] CUDA requested but not available, falling back to CPU")
         args.device = "cpu"
+
+    print(f"[+] Using device {args.device}")
     print(f"[+] Loading model {args.model}")
     model = YOLO(args.model)
     print("[+] Starting training...")
