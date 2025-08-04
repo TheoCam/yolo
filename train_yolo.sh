@@ -35,10 +35,4 @@ CMD=(ultralytics train detect \
     batch=$BATCH \
     patience=$PATIENCE \
     project=$PROJECT_DIR \
-    name=$EXP_NAME)
-
-if [ -n "$DEVICE" ]; then
-    CMD+=(device=$DEVICE)
-fi
-
-"${CMD[@]}"
+    name=$EXP_NAME

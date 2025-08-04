@@ -38,7 +38,6 @@ def main() -> None:
         patience=args.patience,
         project=args.project,
         name=args.name,
-        device=args.device,
     )
     print("[+] Training finished")
 
