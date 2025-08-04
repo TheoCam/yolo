@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Orchestrate YOLOv8 training using Node.js
 // Usage: node mastermind.py <workspace_dir> [--skip-0]
-//        --skip-0 uses existing dataset and launches training directly
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -38,25 +37,6 @@ function main() {
     process.env.AWS_DEFAULT_REGION = 'eu-north-1';
   }
 
-  const dataYamlPath = path.join(workspaceDir, 'data.yaml');
-  const trainScript = path.join(__dirname, 'train_yolo.py');
-  const modelPath = path.join(__dirname, 'yolo11n.pt');
-
-  if (skipExisting) {
-    if (!fs.existsSync(dataYamlPath)) {
-      console.error(`[!] data.yaml not found at ${dataYamlPath}`);
-      process.exit(1);
-    }
-    console.log('[+] Skip flag detected, starting training immediately...');
-    run('python', [
-      trainScript,
-      '--data', dataYamlPath,
-      '--model', modelPath,
-    ]);
-    console.log('[+] Training completed.');
-    return;
-  }
-
   const buckets = ['fiches-udp', 'fiches-sorbonne'];
 
   const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
@@ -73,6 +53,9 @@ function main() {
       '--labels-dir', lblDir,
       '--metadata-dir', metaDir,
     ];
+    if (skipExisting) {
+      fetchArgs.push('--skip-0');
+    }
     run('python', fetchArgs);
   }
 
@@ -115,6 +98,7 @@ function main() {
     '-v', '0.2',
   ]);
 
+  const dataYamlPath = path.join(workspaceDir, 'data.yaml');
   console.log('[+] Writing data.yaml configuration...');
   const yamlContent = [
     `train: ${path.join(datasetDir, 'images/train')}`,
@@ -130,6 +114,8 @@ function main() {
   ].join('\n');
   fs.writeFileSync(dataYamlPath, yamlContent);
 
+  const trainScript = path.join(__dirname, 'train_yolo.py');
+  const modelPath = path.join(__dirname, 'yolo11n.pt');
   console.log('[+] Starting YOLO training...');
   run('python', [
     trainScript,
