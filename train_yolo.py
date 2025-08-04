@@ -18,8 +18,9 @@ def main() -> None:
     parser.add_argument("--project", default="models", help="Ultralytics project directory")
     parser.add_argument("--name", default="exp_ex_corr", help="Training run name")
     args = parser.parse_args()
-
+    print(f"[+] Loading model {args.model}")
     model = YOLO(args.model)
+    print("[+] Starting training...")
     model.train(
         data=args.data,
         epochs=args.epochs,
@@ -30,6 +31,7 @@ def main() -> None:
         name=args.name,
         tensorboard=True,
     )
+    print("[+] Training finished")
 
 
 if __name__ == "__main__":
