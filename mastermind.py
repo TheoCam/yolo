@@ -18,6 +18,7 @@ function main() {
   }
   const workspaceDir = path.resolve(workspaceArg);
   fs.mkdirSync(workspaceDir, { recursive: true });
+  console.log(`[+] Workspace directory set to ${workspaceDir}`);
 
   // Ensure AWS region is set
   if (!process.env.AWS_DEFAULT_REGION) {
@@ -30,6 +31,7 @@ function main() {
   const datasetDir = path.join(workspaceDir, 'dataset');
 
   const fetchScript = path.join(__dirname, 'fetch_s3_dataset.py');
+  console.log('[+] Fetching dataset from S3...');
   run('python', [
     fetchScript,
     'fiches-udp',
@@ -40,6 +42,7 @@ function main() {
   ]);
 
   const splitScript = path.join(__dirname, 'split_dataset.py');
+  console.log('[+] Splitting dataset into train/val/test...');
   run('python', [
     splitScript,
     '-i', imagesDir,
@@ -50,6 +53,7 @@ function main() {
   ]);
 
   const dataYamlPath = path.join(workspaceDir, 'data.yaml');
+  console.log('[+] Writing data.yaml configuration...');
   const yamlContent = [
     `train: ${path.join(datasetDir, 'images/train')}`,
     `val: ${path.join(datasetDir, 'images/val')}`,
@@ -66,11 +70,13 @@ function main() {
 
   const trainScript = path.join(__dirname, 'train_yolo.py');
   const modelPath = path.join(__dirname, 'yolo11n.pt');
+  console.log('[+] Starting YOLO training...');
   run('python', [
     trainScript,
     '--data', dataYamlPath,
     '--model', modelPath,
   ]);
+  console.log('[+] Training completed.');
 }
 
 main();
