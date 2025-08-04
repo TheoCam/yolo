@@ -79,6 +79,7 @@ def _process_object(
     _write_label(label_lines, lbl_path)
     meta_path = os.path.join(meta_dir, os.path.splitext(img_name)[0] + ".json")
     _write_metadata(metadata, meta_path)
+    print(f"[+] Downloaded {bucket}/{key} -> {img_name}")
 
 
 def main() -> None:
@@ -96,6 +97,8 @@ def main() -> None:
 
     s3 = boto3.client("s3")
     for bucket in args.buckets:
+        print(f"[+] Scanning bucket {bucket}...")
+        count = 0
         paginator = s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket, Prefix=args.prefix):
             for item in page.get("Contents", []):
@@ -109,6 +112,8 @@ def main() -> None:
                         args.labels_dir,
                         args.metadata_dir,
                     )
+                    count += 1
+        print(f"[+] Processed {count} objects from {bucket}")
 
 
 if __name__ == "__main__":
