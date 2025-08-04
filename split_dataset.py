@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import os
 import argparse
 import random
+import secrets
 import shutil
 from pathlib import Path
+from typing import Optional
 
 def split_dataset_three_way(
     images_dir: Path,
@@ -11,7 +12,7 @@ def split_dataset_three_way(
     output_dir: Path,
     train_ratio: float = 0.7,
     val_ratio: float = 0.2,
-    seed: int = 42
+    seed: Optional[int] = None,
 ):
     """
     Splits images+labels into train/val/test directories.
@@ -45,6 +46,11 @@ def split_dataset_three_way(
         return
 
     # 3) Shuffle and split
+    if seed is None:
+        seed = secrets.randbits(32)
+        print(f"[+] Generated random seed: {seed}")
+    else:
+        print(f"[+] Using provided seed: {seed}")
     random.seed(seed)
     random.shuffle(pairs)
 
@@ -93,8 +99,10 @@ if __name__ == "__main__":
                         help="Fraction for training (default=0.7)")
     parser.add_argument("--val_ratio", "-v", type=float, default=0.2,
                         help="Fraction for validation (default=0.2)")
-    parser.add_argument("--seed", "-s", type=int, default=42,
-                        help="Random seed (default=42)")
+    parser.add_argument(
+        "--seed", "-s", type=int, default=None,
+        help="Random seed; if omitted a new one is generated each run",
+    )
     args = parser.parse_args()
 
     if args.train_ratio + args.val_ratio >= 1.0:
